@@ -17,24 +17,22 @@
   along with OPM.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <map>
-#include <string>
-#include <type_traits>
-
-#include <fmt/format.h>
+#include <opm/simulators/flow/KeywordValidation.hpp>
 
 #include <opm/common/utility/OpmInputError.hpp>
 #include <opm/parser/eclipse/Deck/Deck.hpp>
 #include <opm/parser/eclipse/Deck/DeckKeyword.hpp>
 #include <opm/parser/eclipse/Parser/ErrorGuard.hpp>
 #include <opm/parser/eclipse/Parser/ParseContext.hpp>
-#include <opm/simulators/flow/KeywordValidation.hpp>
 
-namespace Opm
-{
+#include <map>
+#include <string>
+#include <type_traits>
+#include <vector>
 
-namespace KeywordValidation
-{
+#include <fmt/format.h>
+
+namespace Opm { namespace KeywordValidation {
 
     std::string get_error_report(const std::vector<ValidationError>& errors, const bool critical)
     {
@@ -75,7 +73,9 @@ namespace KeywordValidation
     }
 
     void
-    KeywordValidator::validateDeck(const Deck& deck, const ParseContext& parse_context, ErrorGuard& error_guard) const
+    KeywordValidator::validateDeck(const Deck&         deck,
+                                   const ParseContext& parse_context,
+                                   ErrorGuard&         error_guard) const
     {
         // Make a vector with all problems encountered in the deck.
         std::vector<ValidationError> errors;
@@ -97,84 +97,97 @@ namespace KeywordValidation
         }
     }
 
-    void KeywordValidator::validateDeckKeyword(const DeckKeyword& keyword, std::vector<ValidationError>& errors) const
+    void KeywordValidator::validateDeckKeyword(const DeckKeyword&            keyword,
+                                               std::vector<ValidationError>& errors) const
     {
-        const auto& it = m_keywords.find(keyword.name());
-        if (it != m_keywords.end()) {
+        auto it = this->m_keywords.find(keyword.name());
+        if (it != this->m_keywords.end()) {
             // If the keyword is not supported, add an error for that.
             const auto& properties = it->second;
-            errors.push_back(ValidationError {
-                properties.critical, keyword.location(), 1, std::nullopt, std::nullopt, properties.message});
-        } else {
+            errors.emplace_back(properties.critical,
+                                keyword.location(),
+                                1, std::nullopt, std::nullopt,
+                                properties.message);
+        }
+        else {
             // Otherwise, check all its items.
-            validateKeywordItems(keyword, m_string_items, errors);
-            validateKeywordItems(keyword, m_int_items, errors);
-            validateKeywordItems(keyword, m_double_items, errors);
+            this->validateKeywordItems(keyword, this->m_string_items, errors);
+            this->validateKeywordItems(keyword, this->m_int_items,    errors);
+            this->validateKeywordItems(keyword, this->m_double_items, errors);
         }
     }
 
 
     template <typename T>
-    void KeywordValidator::validateKeywordItems(const DeckKeyword& keyword,
+    void KeywordValidator::validateKeywordItems(const DeckKeyword&                   keyword,
                                                 const PartiallySupportedKeywords<T>& partially_supported_items,
-                                                std::vector<ValidationError>& errors) const
+                                                std::vector<ValidationError>&        errors) const
     {
-        const auto& keyword_properties = partially_supported_items.find(keyword.name());
-        if (keyword_properties != partially_supported_items.end()) {
-            // If this keyworcs has partially supported items, iterate over all of them.
-            for (size_t record_index = 0; record_index < keyword.size(); record_index++) {
-                const auto& record = keyword.getRecord(record_index);
-                for (size_t item_index = 0; item_index < record.size(); item_index++) {
-                    const auto& item = record.getItem(item_index);
-                    // Find the index number, which starts counting at one, so item_index + 1
-                    const auto& item_properties = keyword_properties->second.find(item_index + 1);
-                    if (item_properties != keyword_properties->second.end()) {
-                        if (item.hasValue(0)) {
-                            // Validate the item, if it is partially supported.
-                            validateKeywordItem<T>(keyword,
-                                                   item_properties->second,
-                                                   keyword.size() > 1,
-                                                   record_index,
-                                                   item_index,
-                                                   item.get<T>(0),
-                                                   errors);
-                        }
-                    }
+        auto keyword_properties = partially_supported_items.find(keyword.name());
+        if (keyword_properties == partially_supported_items.end()) {
+            return;
+        }
+
+        // If this keyword has partially supported items, iterate over all of them.
+        for (std::size_t record_index = 0; record_index < keyword.size(); ++record_index) {
+            const auto& record = keyword.getRecord(record_index);
+
+            for (std::size_t item_index = 0; item_index < record.size(); ++item_index) {
+                const auto& item = record.getItem(item_index);
+                if (! item.hasValue(0)) {
+                    continue;
                 }
+
+                // Find the index number, which starts counting at one, so item_index + 1
+                auto item_properties = keyword_properties->second.find(item_index + 1);
+                if (item_properties == keyword_properties->second.end()) {
+                    continue;
+                }
+
+                // Validate the item, if it is partially supported.
+                validateKeywordItem<T>(keyword,
+                                       item_properties->second,
+                                       keyword.size() > 1,
+                                       record_index,
+                                       item_index,
+                                       item.get<T>(0),
+                                       errors);
             }
         }
     }
 
 
     template <typename T>
-    void KeywordValidator::validateKeywordItem(const DeckKeyword& keyword,
+    void KeywordValidator::validateKeywordItem(const DeckKeyword&                            keyword,
                                                const PartiallySupportedKeywordProperties<T>& properties,
-                                               const bool multiple_records,
-                                               const size_t record_index,
-                                               const size_t item_index,
-                                               const T& item_value,
-                                               std::vector<ValidationError>& errors) const
+                                               const bool                                    multiple_records,
+                                               const size_t                                  record_index,
+                                               const size_t                                  item_index,
+                                               const T&                                      item_value,
+                                               std::vector<ValidationError>&                 errors) const
     {
-        if (!properties.validator(item_value)) {
-            // If the value is not permitted, format the value to report it.
-            std::string formatted_value;
-            if constexpr (std::is_arithmetic<T>::value)
-                formatted_value = std::to_string(item_value);
-            else
-                formatted_value = item_value;
-            // Add the relevant information to the vector of errors. Record and
-            // index numbers start at 1, so add 1. Pass zero for the record
-            // index if there is only a single record.
-            errors.push_back(ValidationError {properties.critical,
-                                              keyword.location(),
-                                              multiple_records ? record_index + 1 : 0,
-                                              item_index + 1,
-                                              formatted_value,
-                                              properties.message});
+        if (properties.validator(item_value)) {
+            return;
         }
+
+        // If the value is not permitted, format the value to report it.
+        std::string formatted_value;
+        if constexpr (std::is_arithmetic_v<T>) {
+            formatted_value = std::to_string(item_value);
+        }
+        else {
+            formatted_value = item_value;
+        }
+
+        // Add the relevant information to the vector of errors. Record and
+        // index numbers start at 1, so add 1. Pass zero for the record
+        // index if there is only a single record.
+        errors.emplace_back(properties.critical,
+                            keyword.location(),
+                            multiple_records ? record_index + 1 : 0,
+                            item_index + 1,
+                            formatted_value,
+                            properties.message);
     }
 
-
-} // namespace KeywordValidation
-
-} // namespace Opm
+}} // namespace Opm::KeywordValidation

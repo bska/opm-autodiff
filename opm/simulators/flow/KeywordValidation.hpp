@@ -22,6 +22,7 @@
 
 #include <opm/common/OpmLog/KeywordLocation.hpp>
 
+#include <cstddef>
 #include <functional>
 #include <initializer_list>
 #include <map>
@@ -37,7 +38,9 @@ class DeckKeyword;
 class ErrorGuard;
 class ParseContext;
 
-namespace KeywordValidation
+}
+
+namespace Opm { namespace KeywordValidation
 {
     // Describe an unsupported keyword:
     struct UnsupportedKeywordProperties {
@@ -54,15 +57,18 @@ namespace KeywordValidation
     };
 
     // This is used to list unsupported kewyords.
-    using UnsupportedKeywords = std::map<std::string, UnsupportedKeywordProperties>;
+    using UnsupportedKeywords =
+        std::map<std::string, UnsupportedKeywordProperties>;
 
     // This is used to list the partially supported items of a keyword:
     template <typename T>
-    using PartiallySupportedKeywordItems = std::map<size_t, PartiallySupportedKeywordProperties<T>>;
+    using PartiallySupportedKeywordItems =
+        std::map<std::size_t, PartiallySupportedKeywordProperties<T>>;
 
     // This is used to list the keywords that have partially supported items:
     template <typename T>
-    using PartiallySupportedKeywords = std::map<std::string, PartiallySupportedKeywordItems<T>>;
+    using PartiallySupportedKeywords =
+        std::map<std::string, PartiallySupportedKeywordItems<T>>;
 
     // This contains the information needed to report a single error occurence.
     // The validator will construct a vector of these, copying the relevant
@@ -70,8 +76,8 @@ namespace KeywordValidation
     struct ValidationError {
         bool critical; // Determines if the encountered problem should be an error or a warning
         KeywordLocation location; // Location information (keyword name, file and line number)
-        size_t record_number; // Number of the offending record
-        std::optional<size_t> item_number; // Number of the offending item
+        std::size_t record_number; // Number of the offending record
+        std::optional<std::size_t> item_number; // Number of the offending item
         std::optional<std::string> item_value; // The offending value of a problematic item
         std::optional<std::string> user_message; // An optional message to show if a problem is encountered
     };
@@ -81,7 +87,8 @@ namespace KeywordValidation
     // critical is false, only non-critical errors are reported. If not
     // critical/non-critical errors are present, but the critical flag to reset
     // them, the result will be an empty string.
-    std::string get_error_report(const std::vector<ValidationError>& errors, const bool critical);
+    std::string
+    get_error_report(const std::vector<ValidationError>& errors, const bool critical);
 
     class KeywordValidator
     {
@@ -94,8 +101,7 @@ namespace KeywordValidation
             , m_string_items(string_items)
             , m_int_items(int_items)
             , m_double_items(double_items)
-        {
-        }
+        {}
 
         // Validate a deck, reporting warnings and errors. If there are only
         // warnings, these will be reported. If there are errors, these are
@@ -111,11 +117,10 @@ namespace KeywordValidation
         void validateKeywordItem(const DeckKeyword& keyword,
                                  const PartiallySupportedKeywordProperties<T>& properties,
                                  const bool multiple_records,
-                                 const size_t record_number,
-                                 const size_t item_number,
+                                 const std::size_t record_number,
+                                 const std::size_t item_number,
                                  const T& item_value,
                                  std::vector<ValidationError>& errors) const;
-
 
         template <typename T>
         void validateKeywordItems(const DeckKeyword& keyword,
@@ -134,26 +139,22 @@ namespace KeywordValidation
     class allow_values
     {
     public:
-        allow_values(const std::initializer_list<T>& allowed_values)
-        {
-            for (auto item : allowed_values) {
-                m_allowed_values.push_back(item);
-            }
-        }
+        allow_values(std::initializer_list<T> allowed_values)
+            : m_allowed_values(allowed_values)
+        {}
 
         bool operator()(const T& value) const
         {
-            return std::find(m_allowed_values.begin(), m_allowed_values.end(), value) != m_allowed_values.end();
+            return std::find(this->m_allowed_values.begin(),
+                             this->m_allowed_values.end(), value)
+                != this->m_allowed_values.end();
         }
 
     private:
         std::vector<T> m_allowed_values;
     };
 
-
-} // namespace KeywordValidation
-
-} // namespace Opm
+}} // namespace Opm::KeywordValidation
 
 
 #endif

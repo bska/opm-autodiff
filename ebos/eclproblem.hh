@@ -1193,14 +1193,16 @@ public:
     }
 
 
-    std::unordered_map<std::string, double> fetchWellPI(int reportStep,
-                                                        const Action::ActionX& action,
-                                                        const Schedule& schedule,
-                                                        const std::vector<std::string>& matching_wells) {
-
-        auto wellpi_wells = action.wellpi_wells(WellMatcher(schedule[reportStep].well_order(),
-                                                            schedule[reportStep].wlist_manager()),
-                                                matching_wells);
+    std::unordered_map<std::string, double>
+    fetchWellPI(const int reportStep,
+                const Action::ActionX& action,
+                const Schedule& schedule,
+                const std::vector<std::string>& matching_wells)
+    {
+        const auto wellpi_wells =
+            action.wellpi_wells(WellMatcher(schedule[reportStep].well_order(),
+                                            schedule[reportStep].wlist_manager()),
+                                matching_wells);
 
         if (wellpi_wells.empty())
             return {};
@@ -1209,7 +1211,7 @@ public:
         std::vector<double> wellpi_vector(num_wells);
         for (const auto& wname : wellpi_wells) {
             if (this->wellModel_.hasWell(wname)) {
-                const auto& well = schedule.getWell( wname, reportStep );
+                const auto& well = schedule.getWell(wname, reportStep);
                 wellpi_vector[well.seqIndex()] = this->wellModel_.wellPI(wname);
             }
         }
@@ -1217,25 +1219,29 @@ public:
         const auto& comm = this->simulator().vanguard().grid().comm();
         if (comm.size() > 1) {
             std::vector<double> wellpi_buffer(num_wells * comm.size());
-            comm.gather( wellpi_vector.data(), wellpi_buffer.data(), num_wells, 0 );
+            comm.gather(wellpi_vector.data(), wellpi_buffer.data(), num_wells, 0);
+
             if (comm.rank() == 0) {
-                for (int rank=1; rank < comm.size(); rank++) {
-                    for (std::size_t well_index=0; well_index < num_wells; well_index++) {
-                        const auto global_index = rank*num_wells + well_index;
-                        const auto value = wellpi_buffer[global_index];
-                        if (value != 0)
-                            wellpi_vector[well_index] = value;
+                for (auto global_index = 1*num_wells + 0;
+                          global_index < wellpi_buffer.size();
+                     ++global_index)
+                {
+                    const auto value = wellpi_buffer[global_index];
+                    if (value != 0.0) {
+                        wellpi_vector[global_index % num_wells] = value;
                     }
                 }
             }
+
             comm.broadcast(wellpi_vector.data(), wellpi_vector.size(), 0);
         }
 
         std::unordered_map<std::string, double> wellpi;
         for (const auto& wname : wellpi_wells) {
-            const auto& well = schedule.getWell( wname, reportStep );
-            wellpi[wname] = wellpi_vector[ well.seqIndex() ];
+            const auto& well = schedule.getWell(wname, reportStep);
+            wellpi.emplace(wname, wellpi_vector[well.seqIndex()]);
         }
+
         return wellpi;
     }
 
@@ -1245,7 +1251,8 @@ public:
                       EclipseState& ecl_state,
                       Schedule& schedule,
                       Action::State& actionState,
-                      SummaryState& summaryState) {
+                      SummaryState& summaryState)
+    {
         const auto& actions = schedule[reportStep].actions();
         if (actions.empty())
             return;
@@ -1273,34 +1280,53 @@ public:
             if (actionResult) {
                 std::string wells_string;
                 const auto& matching_wells = actionResult.wells();
-                if (!matching_wells.empty()) {
-                    for (std::size_t iw = 0; iw < matching_wells.size() - 1; iw++)
+                if (! matching_wells.empty()) {
+                    for (std::size_t iw = 0; iw < matching_wells.size() - 1; ++iw) {
                         wells_string += matching_wells[iw] + ", ";
+                    }
+
                     wells_string += matching_wells.back();
                 }
-                std::string msg = "The action: " + action->name() + " evaluated to true at " + ts + " wells: " + wells_string;
-                OpmLog::info(msg);
 
-                const auto& wellpi = this->fetchWellPI(reportStep, *action, schedule, matching_wells);
+                {
+                    std::ostringstream msg;
+                    msg << "Action '" << action->name()
+                        << "' evaluated to TRUE at " << ts
+                        << ", wells: " << wells_string;
+                    OpmLog::info(msg.str());
+                }
 
-                auto affected_wells = schedule.applyAction(reportStep, TimeService::from_time_t(simTime), *action, actionResult, wellpi);
+                const auto& wellpi = this->
+                    fetchWellPI(reportStep, *action, schedule, matching_wells);
+
+                auto affected_wells = schedule
+                    .applyAction(reportStep, TimeService::from_time_t(simTime),
+                                 *action, actionResult, wellpi);
+
                 actionState.add_run(*action, simTime);
+
                 this->wellModel_.updateEclWells(reportStep, affected_wells);
-                if (!affected_wells.empty())
+                if (!affected_wells.empty()) {
                     commit_wellstate = true;
-            } else {
-                std::string msg = "The action: " + action->name() + " evaluated to false at " + ts;
-                OpmLog::info(msg);
+                }
+            }
+            else {
+                std::ostringstream msg;
+                msg << "Action '" << action->name()
+                    << "' evaluated to FALSE at " << ts;
+                OpmLog::info(msg.str());
             }
         }
+
         /*
           The well state has been stored in a previous object when the time step
           has completed successfully, the action process might have modified the
           well state, and to be certain that is not overwritten when starting
           the next timestep we must commit it.
         */
-        if (commit_wellstate)
+        if (commit_wellstate) {
             this->wellModel_.commitWGState();
+        }
     }
 
 

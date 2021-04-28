@@ -125,7 +125,8 @@ public:
                    EWOMS_GET_PARAM(TypeTag, bool, EnableAsyncEclOutput))
         , simulator_(simulator)
     {
-        this->eclOutputModule_ = std::make_unique<EclOutputBlackOilModule<TypeTag>>(simulator, this->wbp_index_list_, this->collectToIORank_);
+        this->eclOutputModule_ = std::make_unique<EclOutputBlackOilModule<TypeTag>>
+            (simulator, this->wbp_index_list_, this->collectToIORank_);
         this->wbp_index_list_.clear();
     }
 

@@ -43,19 +43,18 @@ namespace Opm
 
     struct PhaseUsage : public BlackoilPhases
     {
-        std::array<int, MaxNumPhases + NumCryptoPhases> phase_used;
-        std::array<int, MaxNumPhases + NumCryptoPhases> phase_pos;
+        std::array<int, MaxNumPhases + NumCryptoPhases> phase_used{};
+        std::array<int, MaxNumPhases + NumCryptoPhases> phase_pos{};
 
-        int num_phases;
-        bool has_solvent;
-        bool has_polymer;
-        bool has_energy;
+        int num_phases{0};
+        bool has_solvent{false};
+        bool has_polymer{false};
+        bool has_energy{false};
         // polymer molecular weight
-        bool has_polymermw;
-        bool has_foam;
-        bool has_brine;
-        bool has_zFraction;
-
+        bool has_polymermw{false};
+        bool has_foam{false};
+        bool has_brine{false};
+        bool has_zFraction{false};
     };
 
     /// Check or assign presence of a formed, free phase.  Limited to

@@ -178,29 +178,43 @@ EclGenericWriter(const Schedule& schedule,
     , equilCartMapper_(equilCartMapper)
     , equilGrid_(equilGrid)
 {
-    if (collectToIORank_.isIORank()) {
-        eclIO_.reset(new EclipseIO(eclState_,
-                                   UgGridHelpers::createEclipseGrid(*equilGrid, eclState_.getInputGrid()),
-                                   schedule_,
-                                   summaryConfig_));
+    using UgGridHelpers::createEclipseGrid;
 
-        const auto& wbp_calculators = eclIO_->summary().wbp_calculators( schedule.size() - 1 );
-        wbp_index_list_ = wbp_calculators.index_list();
+    if (this->collectToIORank_.isIORank()) {
+        const auto& es = this->eclState_;
+
+        this->eclIO_ = std::make_unique<EclipseIO>(
+            es, createEclipseGrid(*equilGrid, es.getInputGrid()),
+            this->schedule_, this->summaryConfig_
+        );
+
+        const auto& wbp_calculators = this->eclIO_->summary()
+            .wbp_calculators(vg.schedule().size() - 1);
+
+        this->wbp_index_list_ = wbp_calculators.index_list();
     }
+
     if (collectToIORank_.isParallel()) {
-        const auto& comm = grid_.comm();
-        unsigned long size = wbp_index_list_.size();
+        const auto& comm = this->grid_.comm();
+        unsigned long size = this->wbp_index_list_.size();
+
         comm.broadcast(&size, 1, collectToIORank_.ioRank);
-        if (!collectToIORank_.isIORank())
-            wbp_index_list_.resize( size );
-        comm.broadcast(wbp_index_list_.data(), size, collectToIORank_.ioRank);
+        if (!collectToIORank_.isIORank()) {
+            this->wbp_index_list_.resize(size);
+        }
+
+        comm.broadcast(this->wbp_index_list_.data(),
+                       size, this->collectToIORank_.ioRank);
     }
+
     // create output thread if enabled and rank is I/O rank
     // async output is enabled by default if pthread are enabled
     int numWorkerThreads = 0;
-    if (enableAsyncOutput && collectToIORank_.isIORank())
+    if (enableAsyncOutput && this->collectToIORank_.isIORank()) {
         numWorkerThreads = 1;
-    taskletRunner_.reset(new TaskletRunner(numWorkerThreads));
+    }
+
+    this->taskletRunner_ = std::make_unique<TaskletRunner>(numWorkerThreads);
 }
 
 template<class Grid, class EquilGrid, class GridView, class ElementMapper, class Scalar>
